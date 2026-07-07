@@ -1,0 +1,231 @@
+# Simple workflow for deploying static content to GitHub Pages
+name: Deploy static content to Pages
+
+on:
+  # Runs on pushes targeting the default branch
+  push:
+    branches: ["main"]
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
+# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  # Single deploy job since we're just deploying
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          # Upload entire repository
+          path: '.'
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Liberty Bail Bonds - Payments & Locations</title>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 0; background: #f4f4f4; }
+        header { background: #1a3c6e; color: white; padding: 1.5rem; text-align: center; }
+        .container { max-width: 1200px; margin: 2rem auto; padding: 1rem; }
+        .section { background: white; padding: 2rem; margin-bottom: 2rem; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h2 { color: #1a3c6e; }
+        .locations { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem; }
+        .location-card { border: 1px solid #ddd; padding: 1rem; border-radius: 6px; }
+        #map { height: 500px; border-radius: 8px; margin-top: 1rem; }
+        input, button { padding: 0.8rem; margin: 0.5rem 0; font-size: 1rem; }
+        button { background: #1a3c6e; color: white; border: none; cursor: pointer; border-radius: 4px; }
+        button:hover { background: #2a5a9e; }
+        .result-item { padding: 0.8rem; border-bottom: 1px solid #eee; }
+        .cache-info { font-size: 0.9rem; color: #666; margin-top: 0.5rem; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Liberty Bail Bonds</h1>
+        <p>24/7 Bail Services • Flexible Payments • Nationwide Support</p>
+    </header>
+
+    <div class="container">
+        <!-- Payment Section -->
+        <div class="section">
+            <h2>Payment Information</h2>
+            <p><strong>Flexible Plans Available</strong> — Low down payments, credit accepted.</p>
+        </div>
+
+        <!-- Liberty Locations -->
+        <div class="section">
+            <h2>Our Locations</h2>
+            <div class="locations" id="locations-list"></div>
+        </div>
+
+        <!-- ATM Finder -->
+        <div class="section">
+            <h2>Find Nearest Coinhub ATM</h2>
+            <p>Enter address or zip code:</p>
+            <input type="text" id="search-input" placeholder="e.g., 355 E Monroe St, Jacksonville, FL" style="width: 70%;">
+            <button onclick="searchLocation()">Search</button>
+            <div id="map"></div>
+            <div id="results" style="margin-top: 1rem;"></div>
+        </div>
+    </div>
+
+    <script>
+        // Liberty Locations
+        const libertyLocations = [
+            { name: "Jacksonville Office", address: "355 E Monroe Street, Jacksonville, FL", phone: "(904) 634-0000", lat: 30.328, lng: -81.658 },
+            { name: "Ft. Myers Office", address: "2438 Fowler Street, Ft. Myers, FL", phone: "(239) 337-1656", lat: 26.618, lng: -81.857 },
+            { name: "Memphis Office", address: "208 Poplar Ave, Memphis, TN", phone: "(901) 475-3733", lat: 35.142, lng: -90.052 },
+        ];
+
+        // Mock Coinhub ATMs
+        let coinhubATMs = [
+            { name: "Coinhub Downtown", address: "Near Downtown Jacksonville, FL", lat: 30.332, lng: -81.655 },
+            { name: "Coinhub Ft Myers", address: "Ft. Myers Area", lat: 26.610, lng: -81.860 },
+            { name: "Coinhub Memphis", address: "Memphis Area", lat: 35.140, lng: -90.050 },
+        ];
+
+        let map, userMarker;
+        const geocodeCache = {}; // In-memory cache
+
+        // Load cache from localStorage
+        function loadCache() {
+            const saved = localStorage.getItem('geocodeCache');
+            if (saved) Object.assign(geocodeCache, JSON.parse(saved));
+        }
+
+        // Save cache to localStorage
+        function saveCache() {
+            localStorage.setItem('geocodeCache', JSON.stringify(geocodeCache));
+        }
+
+        function initMap() {
+            map = L.map('map').setView([30.328, -81.658], 10);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap contributors'
+            }).addTo(map);
+
+            libertyLocations.forEach(loc => {
+                L.marker([loc.lat, loc.lng]).addTo(map)
+                    .bindPopup(`<b>\( {loc.name}</b><br> \){loc.address}`);
+            });
+        }
+
+        function renderLibertyLocations() {
+            const container = document.getElementById('locations-list');
+            container.innerHTML = libertyLocations.map(loc => `
+                <div class="location-card">
+                    <h3>${loc.name}</h3>
+                    <p>${loc.address}</p>
+                    <p>📞 <a href="tel:\( {loc.phone}"> \){loc.phone}</a></p>
+                </div>
+            `).join('');
+        }
+
+        function getDistance(lat1, lon1, lat2, lon2) {
+            const R = 3958.8;
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat/2)**2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon/2)**2;
+            return (R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))).toFixed(1);
+        }
+
+        // Geocoding with caching
+        async function geocodeAddress(address) {
+            const normalized = address.toLowerCase().trim();
+
+            // Check cache
+            if (geocodeCache[normalized]) {
+                console.log(`✅ Cache hit for: ${address}`);
+                document.getElementById('results').innerHTML += `<div class="cache-info">📦 Loaded from cache</div>`;
+                return geocodeCache[normalized];
+            }
+
+            // Nominatim API call
+            const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1`;
+            try {
+                const response = await fetch(url, {
+                    headers: { 'User-Agent': 'LibertyBailBondsPortal/1.0 (contact@yourdomain.com)' }
+                });
+                const data = await response.json();
+
+                if (data && data.length > 0) {
+                    const result = { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) };
+                    geocodeCache[normalized] = result;
+                    saveCache();
+                    console.log(`🌐 New geocoding for: ${address}`);
+                    return result;
+                }
+                throw new Error("No results");
+            } catch (e) {
+                console.error(e);
+                alert("Geocoding failed. Try a different address.");
+                return null;
+            }
+        }
+
+        async function searchLocation() {
+            const query = document.getElementById('search-input').value.trim();
+            if (!query) return alert("Enter an address or zip code.");
+
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = "<p>Searching...</p>";
+
+            const coords = await geocodeAddress(query);
+            if (!coords) return;
+
+            // Update map
+            if (userMarker) map.removeLayer(userMarker);
+            userMarker = L.marker([coords.lat, coords.lon]).addTo(map)
+                .bindPopup(`Your Location: ${query}`).openPopup();
+            map.setView([coords.lat, coords.lon], 12);
+
+            // Find nearest ATMs
+            const sortedATMs = coinhubATMs.map(atm => {
+                atm.distance = getDistance(coords.lat, coords.lon, atm.lat, atm.lng);
+                return atm;
+            }).sort((a, b) => parseFloat(a.distance) - parseFloat(b.distance));
+
+            resultsDiv.innerHTML = `<h3>Nearest Coinhub ATMs:</h3>` + 
+                sortedATMs.slice(0, 5).map(atm => `
+                    <div class="result-item">
+                        <strong>${atm.name}</strong><br>
+                        \( {atm.address} — <em> \){atm.distance} miles</em>
+                    </div>
+                `).join('');
+        }
+
+        // Initialize
+        window.onload = () => {
+            loadCache();
+            renderLibertyLocations();
+            initMap();
+        };
+    </script>
+</body>
+</html>
